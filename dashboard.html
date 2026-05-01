@@ -1,0 +1,428 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Market Dashboard</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Syne:wght@400;500;700&display=swap');
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  :root {
+    --bg: #0d0d0f; --surface: #16161a; --surface2: #1e1e24;
+    --border: rgba(255,255,255,0.07); --border2: rgba(255,255,255,0.12);
+    --text: #f0efe8; --muted: #888780;
+    --sp500: #4a9eff; --msci: #ff6b6b; --dcam: #4ade80;
+  }
+  body { font-family: 'Syne', sans-serif; background: var(--bg); color: var(--text); min-height: 100vh; }
+
+  header {
+    padding: 1.5rem 2rem 1.2rem;
+    border-bottom: 1px solid var(--border);
+    display: flex; align-items: flex-end;
+    justify-content: space-between; flex-wrap: wrap; gap: 1rem;
+  }
+  .header-left h1 { font-size: 1.4rem; font-weight: 700; letter-spacing: -0.03em; }
+  .header-left p { font-size: 0.72rem; color: var(--muted); font-family: 'DM Mono', monospace; margin-top: 4px; }
+
+  .status-dot {
+    width: 6px; height: 6px; border-radius: 50%;
+    background: var(--dcam); display: inline-block;
+    margin-right: 6px; animation: pulse 2s infinite;
+  }
+  @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.3} }
+
+  .header-right { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+
+  .refresh-btn {
+    background: none; border: 1px solid var(--border2);
+    color: var(--muted); font-family: 'DM Mono', monospace;
+    font-size: 0.72rem; padding: 5px 12px; border-radius: 6px;
+    cursor: pointer; transition: all 0.15s;
+  }
+  .refresh-btn:hover { color: var(--text); background: var(--surface2); }
+
+  .period-selector {
+    display: flex; gap: 4px; background: var(--surface);
+    border: 1px solid var(--border); border-radius: 8px; padding: 4px;
+  }
+  .period-btn {
+    background: none; border: none; color: var(--muted);
+    font-family: 'DM Mono', monospace; font-size: 0.72rem;
+    padding: 4px 10px; border-radius: 5px; cursor: pointer; transition: all 0.15s;
+  }
+  .period-btn:hover { color: var(--text); background: var(--surface2); }
+  .period-btn.active { background: var(--surface2); color: var(--text); border: 1px solid var(--border2); }
+
+  .main { padding: 1.5rem 2rem; }
+
+  .alert {
+    border-radius: 8px; padding: 10px 14px;
+    font-size: 0.72rem; font-family: 'DM Mono', monospace;
+    margin-bottom: 1.2rem; display: none;
+  }
+  .alert.error   { background: rgba(255,107,107,0.1); border: 1px solid rgba(255,107,107,0.25); color: #ff6b6b; }
+  .alert.loading { background: rgba(74,158,255,0.08); border: 1px solid rgba(74,158,255,0.2);   color: #4a9eff; }
+
+  .metrics-grid {
+    display: grid; grid-template-columns: repeat(3, 1fr);
+    gap: 10px; margin-bottom: 1.2rem;
+  }
+  .metric-card {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 10px; padding: 1rem 1.1rem;
+    position: relative; overflow: hidden; transition: border-color 0.2s;
+  }
+  .metric-card:hover { border-color: var(--border2); }
+  .metric-card::before { content: ''; position: absolute; top: 0; left: 0; right: 0; height: 2px; }
+  .metric-card.sp500::before { background: var(--sp500); }
+  .metric-card.msci::before  { background: var(--msci); }
+  .metric-card.dcam::before  { background: var(--dcam); }
+
+  .metric-label {
+    font-size: 0.65rem; font-family: 'DM Mono', monospace;
+    color: var(--muted); text-transform: uppercase;
+    letter-spacing: 0.08em; margin-bottom: 6px;
+    display: flex; justify-content: space-between; align-items: center;
+  }
+  .metric-ticker { font-size: 0.6rem; padding: 2px 5px; border-radius: 3px; }
+  .metric-card.sp500 .metric-ticker { background: rgba(74,158,255,0.12); color: var(--sp500); }
+  .metric-card.msci  .metric-ticker { background: rgba(255,107,107,0.12); color: var(--msci); }
+  .metric-card.dcam  .metric-ticker { background: rgba(74,222,128,0.12);  color: var(--dcam); }
+
+  .metric-value { font-size: 1.4rem; font-weight: 700; letter-spacing: -0.04em; line-height: 1; margin-bottom: 4px; }
+  .metric-change { font-size: 0.68rem; font-family: 'DM Mono', monospace; }
+  .metric-change.pos { color: var(--dcam); }
+  .metric-change.neg { color: var(--msci); }
+
+  .chart-card {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 12px; padding: 1.25rem; margin-bottom: 1.2rem;
+  }
+  .chart-header {
+    display: flex; align-items: center; justify-content: space-between;
+    margin-bottom: 1rem; flex-wrap: wrap; gap: 10px;
+  }
+  .chart-title { font-size: 0.82rem; font-weight: 500; }
+  .chart-subtitle { font-size: 0.65rem; font-family: 'DM Mono', monospace; color: var(--muted); margin-top: 2px; }
+
+  .legend { display: flex; gap: 14px; }
+  .legend-item {
+    display: flex; align-items: center; gap: 5px;
+    font-size: 0.68rem; font-family: 'DM Mono', monospace;
+    color: var(--muted); cursor: pointer; transition: color 0.15s;
+    user-select: none;
+  }
+  .legend-item:hover { color: var(--text); }
+  .legend-item.hidden { opacity: 0.35; text-decoration: line-through; }
+  .legend-dot { width: 8px; height: 8px; border-radius: 2px; flex-shrink: 0; }
+
+  .chart-wrap { position: relative; width: 100%; height: 300px; }
+
+  .bottom-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  @media (max-width: 640px) {
+    .bottom-grid { grid-template-columns: 1fr; }
+    .metrics-grid { grid-template-columns: 1fr; }
+  }
+
+  .info-card {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 10px; padding: 1.1rem;
+  }
+  .info-card h3 {
+    font-size: 0.7rem; font-weight: 500; color: var(--muted);
+    margin-bottom: 0.8rem; text-transform: uppercase;
+    letter-spacing: 0.06em; font-family: 'DM Mono', monospace;
+  }
+  .stat-row {
+    display: flex; justify-content: space-between; align-items: center;
+    padding: 5px 0; border-bottom: 1px solid var(--border); font-size: 0.72rem;
+  }
+  .stat-row:last-child { border-bottom: none; }
+  .stat-row .key { color: var(--muted); font-family: 'DM Mono', monospace; }
+  .stat-row .val { font-weight: 500; font-family: 'DM Mono', monospace; color: var(--text); }
+  .stat-row .val.pos { color: var(--dcam); }
+  .stat-row .val.neg { color: var(--msci); }
+
+  footer {
+    padding: 1rem 2rem; border-top: 1px solid var(--border);
+    display: flex; justify-content: space-between; flex-wrap: wrap; gap: 6px;
+  }
+  footer p { font-size: 0.62rem; font-family: 'DM Mono', monospace; color: var(--muted); }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="header-left">
+    <h1>Market Dashboard</h1>
+    <p><span class="status-dot"></span>S&amp;P 500 · MSCI World · DCAM — Normalized performance</p>
+  </div>
+  <div class="header-right">
+    <button class="refresh-btn" onclick="loadData()">↻ Refresh</button>
+    <div class="period-selector">
+      <button class="period-btn active" onclick="setPeriod('all',this)">All</button>
+      <button class="period-btn" onclick="setPeriod('1y',this)">1Y</button>
+      <button class="period-btn" onclick="setPeriod('6m',this)">6M</button>
+      <button class="period-btn" onclick="setPeriod('3m',this)">3M</button>
+      <button class="period-btn" onclick="setPeriod('1m',this)">1M</button>
+    </div>
+  </div>
+</header>
+
+<div class="main">
+
+  <div class="alert loading" id="alert-loading">⏳ Loading data from server…</div>
+  <div class="alert error"   id="alert-error">
+    ⚠ Cannot connect to server. Make sure show_etf_data.py is running → python show_etf_data.py
+  </div>
+
+  <div class="metrics-grid">
+    <div class="metric-card sp500">
+      <div class="metric-label">S&amp;P 500 <span class="metric-ticker">^GSPC</span></div>
+      <div class="metric-value" id="sp500-val">—</div>
+      <div class="metric-change" id="sp500-chg">loading…</div>
+    </div>
+    <div class="metric-card msci">
+      <div class="metric-label">MSCI World <span class="metric-ticker">URTH</span></div>
+      <div class="metric-value" id="msci-val">—</div>
+      <div class="metric-change" id="msci-chg">loading…</div>
+    </div>
+    <div class="metric-card dcam">
+      <div class="metric-label">Amundi PEA <span class="metric-ticker">DCAM.PA</span></div>
+      <div class="metric-value" id="dcam-val">—</div>
+      <div class="metric-change" id="dcam-chg">loading…</div>
+    </div>
+  </div>
+
+  <div class="chart-card">
+    <div class="chart-header">
+      <div>
+        <div class="chart-title">Normalized Growth (%)</div>
+        <div class="chart-subtitle">Base = first available date → 0% · Click legend to toggle</div>
+      </div>
+      <div class="legend">
+        <span class="legend-item" id="leg-0" onclick="toggleSeries(0)">
+          <span class="legend-dot" style="background:var(--sp500)"></span>S&amp;P 500
+        </span>
+        <span class="legend-item" id="leg-1" onclick="toggleSeries(1)">
+          <span class="legend-dot" style="background:var(--msci)"></span>MSCI World
+        </span>
+        <span class="legend-item" id="leg-2" onclick="toggleSeries(2)">
+          <span class="legend-dot" style="background:var(--dcam)"></span>DCAM
+        </span>
+      </div>
+    </div>
+    <div class="chart-wrap">
+      <canvas id="mainChart" role="img" aria-label="Line chart comparing normalized growth of S&P 500, MSCI World, and DCAM">No chart data available.</canvas>
+    </div>
+  </div>
+
+  <div class="bottom-grid">
+    <div class="info-card">
+      <h3>Performance summary</h3>
+      <div id="perf-table"><div style="color:var(--muted);font-size:0.72rem;font-family:'DM Mono',monospace;padding:1rem 0;">Waiting for data…</div></div>
+    </div>
+    <div class="info-card">
+      <h3>Data info</h3>
+      <div id="data-info"><div style="color:var(--muted);font-size:0.72rem;font-family:'DM Mono',monospace;padding:1rem 0;">Waiting for data…</div></div>
+    </div>
+  </div>
+</div>
+
+<footer>
+  <p>Data source: Yahoo Finance via yfinance · SQLite → Flask → Dashboard</p>
+  <p id="last-updated">—</p>
+</footer>
+
+<script>
+let allData = { sp500: [], msci: [], dcam: [] };
+let chart = null;
+let currentPeriod = 'all';
+
+async function loadData() {
+  showAlert('loading');
+  try {
+    const res = await fetch('http://localhost:5000/api/data');    if (!res.ok) throw new Error('Server error');
+    allData = await res.json();
+    hideAlerts();
+    renderAll();
+    const d = new Date(allData.exported_at);
+    document.getElementById('last-updated').textContent = 'Last loaded: ' + d.toLocaleTimeString();
+  } catch(e) {
+    showAlert('error');
+  }
+}
+
+function showAlert(type) {
+  document.getElementById('alert-loading').style.display = type === 'loading' ? 'block' : 'none';
+  document.getElementById('alert-error').style.display   = type === 'error'   ? 'block' : 'none';
+}
+function hideAlerts() {
+  document.getElementById('alert-loading').style.display = 'none';
+  document.getElementById('alert-error').style.display   = 'none';
+}
+
+function filterByPeriod(data, period) {
+  if (period === 'all' || !data.length) return data;
+  const cutoffs = { '1y': 365, '6m': 180, '3m': 90, '1m': 30 };
+  const days = cutoffs[period] || 9999;
+  const now = new Date(data[data.length-1].date);
+  const cutoff = new Date(now);
+  cutoff.setDate(cutoff.getDate() - days);
+  return data.filter(d => new Date(d.date) >= cutoff);
+}
+
+function setPeriod(period, btn) {
+  currentPeriod = period;
+  document.querySelectorAll('.period-btn').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  renderAll();
+}
+
+function toggleSeries(idx) {
+  if (!chart) return;
+  const meta = chart.getDatasetMeta(idx);
+  meta.hidden = !meta.hidden;
+  chart.update();
+  document.getElementById('leg-' + idx).classList.toggle('hidden', meta.hidden);
+}
+
+function fmt(v) { return (v >= 0 ? '+' : '') + v.toFixed(2) + '%'; }
+
+function updateMetrics(sp500f, mscif, dcamf) {
+  [['sp500', sp500f], ['msci', mscif], ['dcam', dcamf]].forEach(([key, data]) => {
+    if (!data.length) return;
+    const last = data[data.length-1].value;
+    const change = last - data[0].value;
+    document.getElementById(key+'-val').textContent = fmt(last);
+    const chg = document.getElementById(key+'-chg');
+    chg.textContent = 'Period: ' + fmt(change);
+    chg.className = 'metric-change ' + (change >= 0 ? 'pos' : 'neg');
+  });
+}
+
+function updatePerfTable(sp500f, mscif, dcamf) {
+  const rows = [['S&P 500', sp500f, 'sp500'], ['MSCI World', mscif, 'msci'], ['DCAM', dcamf, 'dcam']];
+  let html = '';
+  rows.forEach(([label, data, cls]) => {
+    if (!data.length) return;
+    const last = data[data.length-1].value;
+    const vals = data.map(d => d.value);
+    const max = Math.max(...vals), min = Math.min(...vals);
+    html += `
+      <div class="stat-row">
+        <span class="key" style="display:flex;align-items:center;gap:5px;">
+          <span style="width:5px;height:5px;border-radius:2px;background:var(--${cls});display:inline-block;"></span>${label}
+        </span>
+        <span class="val ${last>=0?'pos':'neg'}">${fmt(last)}</span>
+      </div>
+      <div class="stat-row"><span class="key" style="padding-left:10px">· Max</span><span class="val pos">${fmt(max)}</span></div>
+      <div class="stat-row"><span class="key" style="padding-left:10px">· Min</span><span class="val ${min>=0?'pos':'neg'}">${fmt(min)}</span></div>
+    `;
+  });
+  document.getElementById('perf-table').innerHTML = html || '<div style="color:var(--muted);font-size:0.72rem;">No data</div>';
+}
+
+function updateDataInfo(sp500f, mscif, dcamf) {
+  const sets = [['S&P 500', sp500f], ['MSCI World', mscif], ['DCAM', dcamf]];
+  let html = '';
+  sets.forEach(([label, data]) => {
+    if (!data.length) return;
+    html += `
+      <div class="stat-row"><span class="key">${label}</span><span class="val">${data.length} pts</span></div>
+      <div class="stat-row"><span class="key" style="padding-left:10px">· From</span><span class="val">${data[0].date}</span></div>
+      <div class="stat-row"><span class="key" style="padding-left:10px">· To</span><span class="val">${data[data.length-1].date}</span></div>
+    `;
+  });
+  document.getElementById('data-info').innerHTML = html || '<div style="color:var(--muted);font-size:0.72rem;">No data</div>';
+}
+
+function renderChart(sp500f, mscif, dcamf) {
+  const allDates = [...new Set([
+    ...sp500f.map(d => d.date),
+    ...mscif.map(d => d.date),
+    ...dcamf.map(d => d.date)
+  ])].sort();
+
+  const toMap = arr => Object.fromEntries(arr.map(d => [d.date, d.value]));
+  const sm = toMap(sp500f), mm = toMap(mscif), dm = toMap(dcamf);
+
+  const datasets = [
+    { label:'S&P 500',    data: allDates.map(d => sm[d]??null), borderColor:'#4a9eff', borderWidth:2, pointRadius:0, pointHoverRadius:4, tension:0.3, fill:false, spanGaps:true, borderDash:[] },
+    { label:'MSCI World', data: allDates.map(d => mm[d]??null), borderColor:'#ff6b6b', borderWidth:2, pointRadius:0, pointHoverRadius:4, tension:0.3, fill:false, spanGaps:true, borderDash:[5,3] },
+    { label:'DCAM',       data: allDates.map(d => dm[d]??null), borderColor:'#4ade80', borderWidth:2, pointRadius:0, pointHoverRadius:4, tension:0.3, fill:false, spanGaps:true, borderDash:[2,2] }
+  ];
+
+  if (chart) { chart.destroy(); chart = null; }
+
+  const ctx = document.getElementById('mainChart').getContext('2d');
+  chart = new Chart(ctx, {
+    type: 'line',
+    data: { labels: allDates, datasets },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      interaction: { mode: 'index', intersect: false },
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          backgroundColor: '#16161a', borderColor: 'rgba(255,255,255,0.12)', borderWidth: 1,
+          titleColor: '#888780', bodyColor: '#f0efe8',
+          titleFont: { family: 'DM Mono', size: 11 },
+          bodyFont:  { family: 'DM Mono', size: 12 },
+          padding: 10,
+          callbacks: {
+            label: c => ` ${c.dataset.label}: ${c.parsed.y !== null ? (c.parsed.y >= 0 ? '+' : '') + c.parsed.y.toFixed(2) + '%' : '—'}`
+          }
+        }
+      },
+      scales: {
+        x: {
+          type: 'category',
+          grid: { color: 'rgba(255,255,255,0.04)' },
+          border: { color: 'rgba(255,255,255,0.07)' },
+          ticks: {
+            color: '#888780', font: { family: 'DM Mono', size: 10 },
+            maxRotation: 0, autoSkip: true, maxTicksLimit: 10,
+            callback: function(v) { const d = this.getLabelForValue(v); return d ? d.slice(0,7) : ''; }
+          }
+        },
+        y: {
+          grid: { color: 'rgba(255,255,255,0.04)' },
+          border: { color: 'rgba(255,255,255,0.07)' },
+          ticks: {
+            color: '#888780', font: { family: 'DM Mono', size: 10 },
+            callback: v => (v >= 0 ? '+' : '') + v.toFixed(1) + '%'
+          }
+        }
+      }
+    },
+    plugins: [{
+      id: 'zeroline',
+      afterDraw(chart) {
+        const { ctx, scales: { x, y } } = chart;
+        const yZ = y.getPixelForValue(0);
+        ctx.save();
+        ctx.strokeStyle = 'rgba(255,255,255,0.2)';
+        ctx.lineWidth = 1; ctx.setLineDash([4, 4]);
+        ctx.beginPath(); ctx.moveTo(x.left, yZ); ctx.lineTo(x.right, yZ);
+        ctx.stroke(); ctx.restore();
+      }
+    }]
+  });
+}
+
+function renderAll() {
+  const sp500f = filterByPeriod(allData.sp500 || [], currentPeriod);
+  const mscif  = filterByPeriod(allData.msci  || [], currentPeriod);
+  const dcamf  = filterByPeriod(allData.dcam  || [], currentPeriod);
+  updateMetrics(sp500f, mscif, dcamf);
+  updatePerfTable(sp500f, mscif, dcamf);
+  updateDataInfo(sp500f, mscif, dcamf);
+  renderChart(sp500f, mscif, dcamf);
+}
+
+loadData();
+</script>
+</body>
+</html>

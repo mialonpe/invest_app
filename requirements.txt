@@ -2,3 +2,4 @@ flask
 flask-cors
 yfinance
 schedule
+gunicorn app:app

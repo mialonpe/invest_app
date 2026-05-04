@@ -243,7 +243,7 @@ let currentPeriod = 'all';
 async function loadData() {
   showAlert('loading');
   try {
-    const res = await fetch('http://localhost:5000/api/data');    if (!res.ok) throw new Error('Server error');
+    const res = await fetch('/api/data');    if (!res.ok) throw new Error('Server error');
     allData = await res.json();
     hideAlerts();
     renderAll();

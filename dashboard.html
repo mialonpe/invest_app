@@ -161,12 +161,14 @@
   <div class="header-right">
     <button class="refresh-btn" onclick="loadData()">↻ Refresh</button>
     <div class="period-selector">
-      <button class="period-btn active" onclick="setPeriod('all',this)">All</button>
-      <button class="period-btn" onclick="setPeriod('1y',this)">1Y</button>
-      <button class="period-btn" onclick="setPeriod('6m',this)">6M</button>
-      <button class="period-btn" onclick="setPeriod('3m',this)">3M</button>
-      <button class="period-btn" onclick="setPeriod('1m',this)">1M</button>
-    </div>
+  <button class="period-btn active" onclick="setPeriod('all',this)">All</button>
+  <button class="period-btn" onclick="setPeriod('5y',this)">5Y</button>
+  <button class="period-btn" onclick="setPeriod('1y',this)">1Y</button>
+  <button class="period-btn" onclick="setPeriod('6m',this)">6M</button>
+  <button class="period-btn" onclick="setPeriod('3m',this)">3M</button>
+  <button class="period-btn" onclick="setPeriod('1m',this)">1M</button>
+  <button class="period-btn" onclick="setPeriod('1w',this)">1W</button>
+</div>
   </div>
 </header>
 
@@ -263,14 +265,30 @@ function hideAlerts() {
   document.getElementById('alert-error').style.display   = 'none';
 }
 
+//re-normalizes so first value of filtered period = 0%
 function filterByPeriod(data, period) {
-  if (period === 'all' || !data.length) return data;
-  const cutoffs = { '1y': 365, '6m': 180, '3m': 90, '1m': 30 };
+  if (!data.length) return data;
+  if (period === 'all') return data;
+
+  const cutoffs = { '5y': 1825, '1y': 365, '6m': 180, '3m': 90, '1m': 30, '1w': 7 };
   const days = cutoffs[period] || 9999;
-  const now = new Date(data[data.length-1].date);
+
+  const now = new Date(data[data.length - 1].date);
   const cutoff = new Date(now);
   cutoff.setDate(cutoff.getDate() - days);
+
   return data.filter(d => new Date(d.date) >= cutoff);
+}
+
+function normalize(data) {
+  if (!data.length) return [];
+
+  const first = data[0].value;
+
+  return data.map(d => ({
+    date: d.date,
+    value: ((d.value - first) / first) * 100
+  }));
 }
 
 function setPeriod(period, btn) {
@@ -384,8 +402,7 @@ function renderChart(sp500f, mscif, dcamf) {
           ticks: {
             color: '#888780', font: { family: 'DM Mono', size: 10 },
             maxRotation: 0, autoSkip: true, maxTicksLimit: 10,
-            callback: function(v) { const d = this.getLabelForValue(v); return d ? d.slice(0,7) : ''; }
-          }
+            callback: function(v) { const d = this.getLabelForValue(v); return d ? d.slice(0,10) : ''; }          }
         },
         y: {
           grid: { color: 'rgba(255,255,255,0.04)' },
@@ -413,13 +430,20 @@ function renderChart(sp500f, mscif, dcamf) {
 }
 
 function renderAll() {
+  // 1. Filter raw data by period
   const sp500f = filterByPeriod(allData.sp500 || [], currentPeriod);
   const mscif  = filterByPeriod(allData.msci  || [], currentPeriod);
   const dcamf  = filterByPeriod(allData.dcam  || [], currentPeriod);
-  updateMetrics(sp500f, mscif, dcamf);
-  updatePerfTable(sp500f, mscif, dcamf);
-  updateDataInfo(sp500f, mscif, dcamf);
-  renderChart(sp500f, mscif, dcamf);
+
+  // 2. Normalize after filtering — so first value always = 0%
+  const sp500n = normalize(sp500f);
+  const mscin  = normalize(mscif);
+  const dcamn  = normalize(dcamf);
+
+  updateMetrics(sp500n, mscin, dcamn);
+  updatePerfTable(sp500n, mscin, dcamn);
+  updateDataInfo(sp500n, mscin, dcamn);
+  renderChart(sp500n, mscin, dcamn);
 }
 
 loadData();

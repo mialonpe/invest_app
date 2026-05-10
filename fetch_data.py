@@ -13,9 +13,9 @@ def fetch_and_save():
         sp500      = yf.Ticker("^GSPC")
         msci_world = yf.Ticker("URTH")
 
-        dcam_hist  = dcam.history(period="1y")
-        sp500_hist = sp500.history(period="1y")
-        msci_hist  = msci_world.history(period="1y")
+        dcam_hist  = dcam.history(start="1990-01-01")
+        sp500_hist = sp500.history(start="1990-01-01")
+        msci_hist  = msci_world.history(start="1990-01-01")
 
         conn = sqlite3.connect(get_db_path())
         cursor = conn.cursor()
